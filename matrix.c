@@ -16,8 +16,6 @@
 #define MAX_HEIGHT(h) (h / 2)
 #define MIN_SPEED 1
 #define MAX_SPEED 3
-#define MIN_DISTANCE(h) (h / 5)
-#define MAX_DISTANCE(h) (h / 2)
 
 typedef struct _line_t {
   wchar_t head;
