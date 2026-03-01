@@ -5,137 +5,226 @@
 #include <time.h>
 #include <unistd.h>
 
-typedef struct _LINE {
-	wchar_t *chars;
-	int x, y, vel, height;
-} LINE;
+#define HEAD_PAIR 1
+#define BODY_PAIR 2
 
-void cleanup(LINE *lines, int numlines) {
-	for (int i = 0; i < numlines; i++)
-		free(lines[i].chars);
-	free(lines);
+#define FPS 10
+#define MESSAGE "press 'q' to quit"
+#define MESSAGE_LENGTH 17
+
+#define MIN_HEIGHT(h) (h / 10)
+#define MAX_HEIGHT(h) (h / 2)
+#define MIN_SPEED 1
+#define MAX_SPEED 3
+#define MIN_DISTANCE(h) (h / 5)
+#define MAX_DISTANCE(h) (h / 2)
+
+typedef struct _line_t {
+	wchar_t head;
+	int x;
+  int y; 
+  int speed;
+  int height;
+} line_t;
+
+static int g_screen_width = 0;
+static int g_screen_height = 0;
+static line_t** g_lines = NULL;
+static wchar_t g_characters[0x42];
+
+int random_range(int lo, int hi)
+{
+  int range = hi - lo;
+  return (rand() % range) + lo;
 }
 
-int main(int argc, char **argv) {
-	setlocale(LC_ALL, "");
-	initscr();
+wchar_t random_character()
+{
+  int index = random_range(0, wcslen(g_characters));
+  return g_characters[index];
+}
 
-	if (has_colors() == FALSE) {
+line_t* new_line(int x)
+{
+  line_t* line = (line_t*)malloc(sizeof(line_t));
+  if (line != NULL) {
+    line->x = x;
+    line->y = 0;
+    line->speed = random_range(MIN_SPEED, MAX_SPEED);
+    line->height = random_range(MIN_HEIGHT(g_screen_height), MAX_HEIGHT(g_screen_height));
+    line->head = random_character();
+  }
+  
+  return line;
+}
+
+void destroy_line(line_t* line)
+{
+  if (line == NULL) return;
+  free(line);
+}
+
+void destroy_all()
+{
+  if (g_lines != NULL) {
+    for (int i = 0; i < g_screen_width; ++i)
+    {
+      destroy_line(g_lines[i]);
+    }
+    free(g_lines);
+  }
+}
+
+bool is_visible(line_t* line)
+{
+  return (line != NULL) && (line->y - line->height < g_screen_height);
+}
+
+void update_line(line_t* line)
+{
+  if (!is_visible(line)) return;
+  int screen_height = g_screen_height - 1;
+
+  // Overwrite old head and draw the new body characters:
+  attron(COLOR_PAIR(BODY_PAIR));
+  for (int i = 0; i < line->speed; ++i)
+  {
+    int y = line->y + i;
+    if (y < 0 || y >= screen_height) continue;
+    mvprintw(y, line->x, "%lc", line->head);
+    line->head = random_character();
+  }
+  attroff(COLOR_PAIR(BODY_PAIR));
+  
+  // Overwrite the tail characters:
+  for (int i = 0; i < line->speed; ++i)
+  {
+    int y = line->y - line->height - i;
+    if (y < 0 || y >= screen_height) continue;
+    mvprintw(y, line->x, " ");
+  }
+
+  // Advance the head:
+  line->y += line->speed;
+  
+  // Draw the head character:
+  if (line->y >= screen_height) return;
+  attron(COLOR_PAIR(HEAD_PAIR));
+  mvprintw(line->y, line->x, "%lc", line->head);
+  attroff(COLOR_PAIR(HEAD_PAIR));
+}
+
+void die(const char* message)
+{
+  fputs(message, stderr);
+  destroy_all();
+  endwin();
+  exit(EXIT_FAILURE);
+}
+
+void add_line(int x)
+{
+  line_t* line = new_line(x);
+  if (line == NULL) die("could not create line");
+  g_lines[x] = line;
+}
+
+void on_resized()
+{
+  destroy_all();
+	getmaxyx(stdscr, g_screen_height, g_screen_width);
+  clear();
+
+  // (Re-)initialize lines:
+  g_lines = (line_t**)malloc(g_screen_width * sizeof(line_t*));
+  for (int i = 0; i < g_screen_width; ++i)
+  {
+    add_line(i);
+  }
+}
+
+void setup()
+{
+  setlocale(LC_ALL, "C.UTF-8");
+  initscr();
+
+  if (has_colors() == FALSE) {
 		endwin();
 		fprintf(stderr, "Terminal does not support colour.\n");
-		return -1;
+		exit(EXIT_FAILURE);
 	}
 	start_color();
 
-	init_pair(1, COLOR_WHITE, COLOR_BLACK); // Head chars
-	init_pair(2, COLOR_GREEN, COLOR_BLACK); // Trail chars
+	init_pair(HEAD_PAIR, COLOR_WHITE, COLOR_BLACK);
+	init_pair(BODY_PAIR, COLOR_GREEN, COLOR_BLACK);
 
-	srand(time(NULL));
-	nodelay(stdscr, TRUE);
-	curs_set(0);
-	cbreak();
-	noecho();
+  srand(time(NULL));
+	timeout(1000 / FPS); // Set input timeout, effectively limiting FPS
+	curs_set(0); // Make cursor invisible
+	raw(); // Disable line buffering, and also intercept signals
+	noecho(); // Don't print typed characters
 
-	int width, height;
-	getmaxyx(stdscr, height, width);
-	height--;
+  // Digits 0-9 followed by Katakana unicode block 0xFF66-0xFF9D:
+  for (int i = 0; i < 10; ++i)
+  {
+    g_characters[i] = (wchar_t)('0' + i);
+  }
+  for (int i = 0; i < 0x37; ++i)
+  {
+    g_characters[i + 10] = (wchar_t)(0xFF66 + i);
+  }
+  g_characters[0x41] = (wchar_t)'\0';
+}
 
-	int numlines = width / 2;
-	LINE *lines = (LINE *) calloc(numlines, sizeof(LINE));
-	if (lines == NULL) {
-		endwin();
-		fprintf(stderr, "Not enough memory.\n");
-		return -1;
-	}
+int main(int argc, char **argv)
+{
+	setup();
+  on_resized(); // Initialize screen
 
-	clock_t start, delta;
-	start = clock();
-	int fps = CLOCKS_PER_SEC / 10;
-	while (getch() != 'q') {
-		delta = clock() - start;
-		start = clock();
+  char time_buffer[32];
+  bool is_running = true;
+  while (is_running)
+  {
+    switch (getch())
+    {
+      case 'q':
+        is_running = false;
+        break;
+      case KEY_RESIZE:
+        on_resized();
+        break;
+    }
 
-		if (delta < fps) {
-			usleep(fps - delta);
-		}
+    for (int i = 0; i < g_screen_width; ++i)
+    {
+      line_t* line = g_lines[i];
+      update_line(line);
+      
+      // Restart when off-screen
+      if (!is_visible(line)) {
+        destroy_line(line);
+        add_line(i);
+      }
+    }
 
-		clear();
-		for (int i = 0; i < numlines; i++) {
-			LINE *line = &lines[i];
+    // Draw status line:
+    time_t t = time(NULL);
+    struct tm *lt = localtime(&t);
+    if (lt == NULL) {
+      die("could not get local time");
+    }
 
-			// If line is off-screen, restart it elsewhere
-			if (line->chars == NULL) {
-				while (line->chars == NULL) {
-					int x = rand() % width;
-					int flag = 1;
-					for (int j = 0; j < numlines; j++) {
-						if (&lines[j] == line) continue;
-						if (lines[j].x == x) {
-							flag = 0;
-							break;
-						}
-					}
-					if (flag) { // Set-up new line's values
-						line->x = x;
-						line->y = 0;
-						line->vel = (rand() % 3) + 1;
-						line->height = (rand() % (height / 2)) + (height / 2);
+    if (strftime(time_buffer, sizeof(time_buffer), "%F %r", lt) == 0) {
+      die("could not format time");
+    }
 
-						line->chars = (wchar_t *) malloc(sizeof(wchar_t) * height);
-						if (line->chars == NULL) {
-							endwin();
-							fprintf(stderr, "Not enough memory.\n");
-							cleanup(lines, numlines);
-							return -1;
-						}
-						for (int j = 0; j < height; j++) {
-							if (rand() % 2) {
-								int index = 0x3000;
-								int a = ((rand() % 6) + 10) << 4; // A-F
-								int b = rand() % 16; // 0-F
-								index |= a | b; // 0x30(A-F)(0-F) Katakana Unicode block
-								line->chars[j] = (wchar_t) index;
-							} else {
-								line->chars[j] = (wchar_t) (0x30 | (rand() % 10)); // 0-9
-							}
-						}
-					}
-				}
-			} else { // Advance line then re-draw it
-				line->y += line->vel;
-				if (line->y >= height + line->height) {
-					free(line->chars);
-					line->chars = NULL;
-					continue;
-				}
-				int y = line->y;
-				for (int j = 0; j < line->height; j++) {
-					if (0 <= y && y < height) {
-						if (j < 3) {
-							attron(COLOR_PAIR(1));
-						} else {
-							attron(COLOR_PAIR(2));
-						}
+    mvprintw(g_screen_height - 1, 0, "%s", time_buffer);
+    mvprintw(g_screen_height - 1, g_screen_width - MESSAGE_LENGTH, MESSAGE);
 
-						mvprintw(y, line->x, "%lc", line->chars[y]);
+    refresh();
+  }
 
-						if (j < 3) {
-							attroff(COLOR_PAIR(1));
-						} else {
-							attroff(COLOR_PAIR(2));
-						}
-					}
-					y--;
-				}
-			}
-		}
-		attron(COLOR_PAIR(1));
-		mvaddstr(height, width - 18, "press 'q' to quit");
-		attroff(COLOR_PAIR(1));
-		refresh();
-	}
-
+  destroy_all();
 	endwin();
-	cleanup(lines, numlines);
-	return 0;
+  return 0;
 }
