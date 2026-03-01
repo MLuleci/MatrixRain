@@ -20,8 +20,8 @@
 #define MAX_DISTANCE(h) (h / 2)
 
 typedef struct _line_t {
-	wchar_t head;
-	int x;
+  wchar_t head;
+  int x;
   int y; 
   int speed;
   int height;
@@ -84,7 +84,7 @@ void update_line(line_t* line)
 {
   if (!is_visible(line)) return;
   int screen_height = g_screen_height - 1;
-
+  
   // Overwrite old head and draw the new body characters:
   attron(COLOR_PAIR(BODY_PAIR));
   for (int i = 0; i < line->speed; ++i)
@@ -103,7 +103,7 @@ void update_line(line_t* line)
     if (y < 0 || y >= screen_height) continue;
     mvprintw(y, line->x, " ");
   }
-
+  
   // Advance the head:
   line->y += line->speed;
   
@@ -132,9 +132,9 @@ void add_line(int x)
 void on_resized()
 {
   destroy_all();
-	getmaxyx(stdscr, g_screen_height, g_screen_width);
+  getmaxyx(stdscr, g_screen_height, g_screen_width);
   clear();
-
+  
   // (Re-)initialize lines:
   g_lines = (line_t**)malloc(g_screen_width * sizeof(line_t*));
   for (int i = 0; i < g_screen_width; ++i)
@@ -147,23 +147,23 @@ void setup()
 {
   setlocale(LC_ALL, "C.UTF-8");
   initscr();
-
+  
   if (has_colors() == FALSE) {
-		endwin();
-		fprintf(stderr, "Terminal does not support colour.\n");
-		exit(EXIT_FAILURE);
-	}
-	start_color();
-
-	init_pair(HEAD_PAIR, COLOR_WHITE, COLOR_BLACK);
-	init_pair(BODY_PAIR, COLOR_GREEN, COLOR_BLACK);
-
+    endwin();
+    fprintf(stderr, "Terminal does not support colour.\n");
+    exit(EXIT_FAILURE);
+  }
+  start_color();
+  
+  init_pair(HEAD_PAIR, COLOR_WHITE, COLOR_BLACK);
+  init_pair(BODY_PAIR, COLOR_GREEN, COLOR_BLACK);
+  
   srand(time(NULL));
-	timeout(1000 / FPS); // Set input timeout, effectively limiting FPS
-	curs_set(0); // Make cursor invisible
-	raw(); // Disable line buffering, and also intercept signals
-	noecho(); // Don't print typed characters
-
+  timeout(1000 / FPS); // Set input timeout, effectively limiting FPS
+  curs_set(0); // Make cursor invisible
+  raw(); // Disable line buffering, and also intercept signals
+  noecho(); // Don't print typed characters
+  
   // Digits 0-9 followed by Katakana unicode block 0xFF66-0xFF9D:
   for (int i = 0; i < 10; ++i)
   {
@@ -178,9 +178,9 @@ void setup()
 
 int main(int argc, char **argv)
 {
-	setup();
+  setup();
   on_resized(); // Initialize screen
-
+  
   char time_buffer[32];
   bool is_running = true;
   while (is_running)
@@ -188,13 +188,13 @@ int main(int argc, char **argv)
     switch (getch())
     {
       case 'q':
-        is_running = false;
-        break;
+      is_running = false;
+      break;
       case KEY_RESIZE:
-        on_resized();
-        break;
+      on_resized();
+      break;
     }
-
+    
     for (int i = 0; i < g_screen_width; ++i)
     {
       line_t* line = g_lines[i];
@@ -206,25 +206,25 @@ int main(int argc, char **argv)
         add_line(i);
       }
     }
-
+    
     // Draw status line:
     time_t t = time(NULL);
     struct tm *lt = localtime(&t);
     if (lt == NULL) {
       die("could not get local time");
     }
-
+    
     if (strftime(time_buffer, sizeof(time_buffer), "%F %r", lt) == 0) {
       die("could not format time");
     }
-
+    
     mvprintw(g_screen_height - 1, 0, "%s", time_buffer);
     mvprintw(g_screen_height - 1, g_screen_width - MESSAGE_LENGTH, MESSAGE);
-
+    
     refresh();
   }
-
+  
   destroy_all();
-	endwin();
+  endwin();
   return 0;
 }
