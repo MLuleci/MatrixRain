@@ -27,7 +27,7 @@ typedef struct _line_t {
 
 static int g_screen_width = 0;
 static int g_screen_height = 0;
-static line_t** g_lines = NULL;
+static line_t* g_lines = NULL;
 static wchar_t g_characters[0x42];
 
 int random_range(int lo, int hi)
@@ -42,35 +42,14 @@ wchar_t random_character()
   return g_characters[index];
 }
 
-line_t* new_line(int x)
-{
-  line_t* line = (line_t*)malloc(sizeof(line_t));
-  if (line != NULL) {
-    line->x = x;
-    line->y = 0;
-    line->speed = random_range(MIN_SPEED, MAX_SPEED);
-    line->height = random_range(MIN_HEIGHT(g_screen_height), MAX_HEIGHT(g_screen_height));
-    line->head = random_character();
-  }
-  
-  return line;
-}
-
-void destroy_line(line_t* line)
+void new_line(line_t* line)
 {
   if (line == NULL) return;
-  free(line);
-}
 
-void destroy_all()
-{
-  if (g_lines != NULL) {
-    for (int i = 0; i < g_screen_width; ++i)
-    {
-      destroy_line(g_lines[i]);
-    }
-    free(g_lines);
-  }
+  line->y = 0;
+  line->speed = random_range(MIN_SPEED, MAX_SPEED);
+  line->height = random_range(MIN_HEIGHT(g_screen_height), MAX_HEIGHT(g_screen_height));
+  line->head = random_character();
 }
 
 bool is_visible(line_t* line)
@@ -80,7 +59,9 @@ bool is_visible(line_t* line)
 
 void update_line(line_t* line)
 {
-  if (!is_visible(line)) return;
+  if (!is_visible(line)) {
+    return new_line(line);
+  }
   int screen_height = g_screen_height - 1;
   
   // Overwrite old head and draw the new body characters:
@@ -115,29 +96,23 @@ void update_line(line_t* line)
 void die(const char* message)
 {
   fputs(message, stderr);
-  destroy_all();
+  free(g_lines);
   endwin();
   exit(EXIT_FAILURE);
 }
 
-void add_line(int x)
-{
-  line_t* line = new_line(x);
-  if (line == NULL) die("could not create line");
-  g_lines[x] = line;
-}
-
 void on_resized()
 {
-  destroy_all();
   getmaxyx(stdscr, g_screen_height, g_screen_width);
   clear();
   
   // (Re-)initialize lines:
-  g_lines = (line_t**)malloc(g_screen_width * sizeof(line_t*));
+  g_lines = (line_t*)realloc(g_lines, g_screen_width * sizeof(line_t));
   for (int i = 0; i < g_screen_width; ++i)
   {
-    add_line(i);
+    line_t* line = &g_lines[i];
+    line->x = i;
+    new_line(line);
   }
 }
 
@@ -195,14 +170,7 @@ int main(int argc, char **argv)
     
     for (int i = 0; i < g_screen_width; ++i)
     {
-      line_t* line = g_lines[i];
-      update_line(line);
-      
-      // Restart when off-screen
-      if (!is_visible(line)) {
-        destroy_line(line);
-        add_line(i);
-      }
+      update_line(&g_lines[i]);
     }
     
     // Draw status line:
@@ -222,7 +190,7 @@ int main(int argc, char **argv)
     refresh();
   }
   
-  destroy_all();
+  free(g_lines);
   endwin();
   return 0;
 }
