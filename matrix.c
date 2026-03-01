@@ -45,7 +45,7 @@ wchar_t random_character()
 void new_line(line_t* line)
 {
   if (line == NULL) return;
-
+  
   line->y = 0;
   line->speed = random_range(MIN_SPEED, MAX_SPEED);
   line->height = random_range(MIN_HEIGHT(g_screen_height), MAX_HEIGHT(g_screen_height));
@@ -103,12 +103,16 @@ void die(const char* message)
 
 void on_resized()
 {
+  int previous_width = g_screen_width;
   getmaxyx(stdscr, g_screen_height, g_screen_width);
   clear();
   
   // (Re-)initialize lines:
-  g_lines = (line_t*)realloc(g_lines, g_screen_width * sizeof(line_t));
-  for (int i = 0; i < g_screen_width; ++i)
+  line_t* p = (line_t*)realloc(g_lines, g_screen_width * sizeof(line_t));
+  if (p == NULL) die("could not allocate memory");
+  
+  g_lines = p;
+  for (int i = previous_width; i < g_screen_width; ++i)
   {
     line_t* line = &g_lines[i];
     line->x = i;
@@ -192,5 +196,5 @@ int main(int argc, char **argv)
   
   free(g_lines);
   endwin();
-  return 0;
+  return EXIT_SUCCESS;
 }
