@@ -115,8 +115,9 @@ void on_resized()
   for (int i = previous_width; i < g_screen_width; ++i)
   {
     line_t* line = &g_lines[i];
-    line->x = i;
     new_line(line);
+    line->x = i;
+    line->y = random_range(0, g_screen_height);
   }
 }
 
